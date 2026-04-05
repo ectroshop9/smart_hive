@@ -1,0 +1,2 @@
+/home/ectroshop9/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/bin/xtensa-esp32s3-elf-ar qc libsystem.a CMakeFiles/__idf_system.dir/rw_lock.cpp.obj CMakeFiles/__idf_system.dir/task_monitor.cpp.obj
+/home/ectroshop9/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/bin/xtensa-esp32s3-elf-ranlib libsystem.a

@@ -1,0 +1,2 @@
+/home/ectroshop9/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/bin/xtensa-esp32s3-elf-ar qc libhive_manager.a CMakeFiles/__idf_hive_manager.dir/hive_manager.cpp.obj
+/home/ectroshop9/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/bin/xtensa-esp32s3-elf-ranlib libhive_manager.a

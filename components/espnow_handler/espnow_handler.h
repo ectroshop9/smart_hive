@@ -2,21 +2,22 @@
 #define ESPNOW_HANDLER_H
 
 #include <stdint.h>
-#include <stdbool.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "../utils/types.h"
 
-typedef struct {
-    int id;
-    float weight;
-    float temp;
-    float hum;
-    int battery;
-    int gas;
-    int uv;
-    bool motion;
-    float dsTemp[3];
-} hive_data_t;
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef void (*espnow_data_callback_t)(const hive_data_t* data);
 
 void espnow_handler_init(void);
-void espnow_handler_register_callback(void (*cb)(hive_data_t *data));
+void espnow_handler_register_callback(espnow_data_callback_t cb);
+void espnow_handler_send_data(const hive_data_t* data, const uint8_t* dest_mac);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

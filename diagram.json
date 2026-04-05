@@ -10,7 +10,7 @@
       "left": 100.57,
       "attrs": {}
     },
-    { "type": "wokwi-ili9341", "id": "lcd1", "top": -56.8, "left": 57.3, "attrs": {} },
+    { "type": "wokwi-ili9341", "id": "lcd1", "top": -47.2, "left": 76.5, "attrs": {} },
     {
       "type": "wokwi-analog-joystick",
       "id": "joystick1",
@@ -18,6 +18,14 @@
       "left": 237.2,
       "rotate": 180,
       "attrs": {}
+    },
+    { "type": "wokwi-led", "id": "led2", "top": 342, "left": 13.4, "attrs": { "color": "white" } },
+    {
+      "type": "wokwi-buzzer",
+      "id": "bz1",
+      "top": 223.2,
+      "left": -27,
+      "attrs": { "volume": "0.1" }
     }
   ],
   "connections": [
@@ -36,7 +44,11 @@
     [ "esp:3V3.2", "joystick1:VCC", "green", [ "h76.75", "v-38.4", "h124.8" ] ],
     [ "joystick1:SEL", "esp:1", "green", [ "v-19.2", "h-67.2", "v28.8", "h-9.6" ] ],
     [ "joystick1:HORZ", "esp:2", "green", [ "v-28.8", "h-67.2", "v48" ] ],
-    [ "esp:3", "joystick1:VERT", "green", [ "v-9.6", "h124.75", "v-96", "h67.2" ] ]
+    [ "esp:3", "joystick1:VERT", "green", [ "v-9.6", "h124.75", "v-96", "h67.2" ] ],
+    [ "bz1:2", "esp:4", "green", [ "v0" ] ],
+    [ "bz1:1", "esp:GND.1", "black", [ "v259.2", "h9.6" ] ],
+    [ "led2:C", "bz1:1", "black", [ "v0", "h-28.4" ] ],
+    [ "led2:A", "esp:5", "orange", [ "v0", "h48", "v-38.4" ] ]
   ],
   "dependencies": {}
 }

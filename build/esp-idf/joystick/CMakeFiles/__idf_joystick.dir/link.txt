@@ -1,0 +1,2 @@
+/home/ectroshop9/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/bin/xtensa-esp32s3-elf-ar qc libjoystick.a CMakeFiles/__idf_joystick.dir/joystick.cpp.obj
+/home/ectroshop9/.espressif/tools/xtensa-esp-elf/esp-13.2.0_20240530/xtensa-esp-elf/bin/xtensa-esp32s3-elf-ranlib libjoystick.a

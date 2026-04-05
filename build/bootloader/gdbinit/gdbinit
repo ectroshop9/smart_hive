@@ -1,2 +1,0 @@
-source /workspaces/master_hive/build/bootloader/gdbinit/symbols
-source /workspaces/master_hive/build/bootloader/gdbinit/connect

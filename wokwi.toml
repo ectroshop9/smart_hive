@@ -1,4 +1,4 @@
 [wokwi]
 version = 1
 firmware = 'build/flasher_args.json'
-elf = 'build/master_hive.elf'
+elf = 'build/smart-hive-master.elf'

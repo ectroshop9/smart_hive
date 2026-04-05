@@ -1,3 +1,5 @@
-idf_component_register(SRCS "hive_manager.c"
-                    INCLUDE_DIRS "."
-                    REQUIRES espnow_handler)
+idf_component_register(
+    SRCS "hive_manager.cpp"
+    INCLUDE_DIRS "."
+    REQUIRES nvs_flash esp_timer
+)

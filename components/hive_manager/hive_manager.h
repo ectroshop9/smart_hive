@@ -1,15 +1,22 @@
 #ifndef HIVE_MANAGER_H
 #define HIVE_MANAGER_H
 
-#include <stdint.h>
-#include <stdbool.h>
-#include "espnow_handler.h"
+#include "../utils/types.h"
+#include <optional>
 
-#define MAX_HIVES 10
+namespace HiveManager {
 
-void hive_manager_init(void);
-void hive_manager_update(hive_data_t *data);
-int hive_manager_get_count(void);
-hive_data_t* hive_manager_get_hive(int index);
+void init(void);
+void saveAll(void);
+void loadAll(void);
+int getCount(void);
+std::optional<hive_data_t> getHive(int index);
+hive_data_t* getHiveMutable(int index);
+void updateHive(const hive_data_t& data);
+void addTestData(void);
+void setSelected(int idx);
+int getSelected(void);
+
+} // namespace HiveManager
 
 #endif

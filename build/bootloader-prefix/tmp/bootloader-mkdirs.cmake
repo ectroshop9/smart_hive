@@ -3,25 +3,20 @@
 
 cmake_minimum_required(VERSION 3.5)
 
-# If CMAKE_DISABLE_SOURCE_CHANGES is set to true and the source directory is an
-# existing directory in our source tree, calling file(MAKE_DIRECTORY) on it
-# would cause a fatal error, even though it would be a no-op.
-if(NOT EXISTS "/opt/esp/idf/components/bootloader/subproject")
-  file(MAKE_DIRECTORY "/opt/esp/idf/components/bootloader/subproject")
-endif()
 file(MAKE_DIRECTORY
-  "/workspaces/master_hive/build/bootloader"
-  "/workspaces/master_hive/build/bootloader-prefix"
-  "/workspaces/master_hive/build/bootloader-prefix/tmp"
-  "/workspaces/master_hive/build/bootloader-prefix/src/bootloader-stamp"
-  "/workspaces/master_hive/build/bootloader-prefix/src"
-  "/workspaces/master_hive/build/bootloader-prefix/src/bootloader-stamp"
+  "/home/ectroshop9/esp-idf/components/bootloader/subproject"
+  "/home/ectroshop9/smart-hive-master/build/bootloader"
+  "/home/ectroshop9/smart-hive-master/build/bootloader-prefix"
+  "/home/ectroshop9/smart-hive-master/build/bootloader-prefix/tmp"
+  "/home/ectroshop9/smart-hive-master/build/bootloader-prefix/src/bootloader-stamp"
+  "/home/ectroshop9/smart-hive-master/build/bootloader-prefix/src"
+  "/home/ectroshop9/smart-hive-master/build/bootloader-prefix/src/bootloader-stamp"
 )
 
 set(configSubDirs )
 foreach(subDir IN LISTS configSubDirs)
-    file(MAKE_DIRECTORY "/workspaces/master_hive/build/bootloader-prefix/src/bootloader-stamp/${subDir}")
+    file(MAKE_DIRECTORY "/home/ectroshop9/smart-hive-master/build/bootloader-prefix/src/bootloader-stamp/${subDir}")
 endforeach()
 if(cfgdir)
-  file(MAKE_DIRECTORY "/workspaces/master_hive/build/bootloader-prefix/src/bootloader-stamp${cfgdir}") # cfgdir has leading slash
+  file(MAKE_DIRECTORY "/home/ectroshop9/smart-hive-master/build/bootloader-prefix/src/bootloader-stamp${cfgdir}") # cfgdir has leading slash
 endif()

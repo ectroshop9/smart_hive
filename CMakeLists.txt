@@ -1,12 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-# إضافة المكونات المخصصة
 set(EXTRA_COMPONENT_DIRS
+    components/utils
     components/display
     components/joystick
     components/espnow_handler
     components/hive_manager
+    components/alarm
+    components/ai_engine
+    components/system
 )
 
-project(master_hive)
+project(smart_hive_master)
