@@ -1,8 +1,0 @@
-fatal: not a git repository (or any parent up to mount point /)
-Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
-info: INFO: Symbol IDF_TARGET_LINUX defined in multiple locations (see below). Please check if this is a correct behavior or a random name match:
-    /home/ectroshop9/esp-idf/Kconfig:78
-    /home/ectroshop9/esp-idf/Kconfig:162
-fatal: not a git repository (or any parent up to mount point /)
-Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
-fatal: not a git repository: /home/ectroshop9/esp-idf/components/openthread/openthread/../../../.git/modules/components/openthread/openthread
