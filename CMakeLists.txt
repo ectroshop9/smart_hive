@@ -12,6 +12,7 @@ set(EXTRA_COMPONENT_DIRS
     components/system
     components/web_server
     components/setup_wizard
+    components/ota_update
 )
 
 project(smart_hive_master)

@@ -1,3 +1,24 @@
+# 1. ملفات البناء الضخمة (أهم سطر)
 build/
+
+# 2. ملفات الإعدادات المحلية (تختلف من جهاز لآخر)
 sdkconfig
+sdkconfig.old
+
+# 3. ملفات بيئة البايثون والأدوات (لا ترفعها لأنها موجودة عند الجميع)
 .espressif/
+python_env/
+managed_components/
+dependencies.lock
+
+# 4. ملفات النظام والبرامج المؤقتة
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
+*.bak
+*.pyc
+
+# 5. استثناء ملفات السكربت الخاصة بنا لتبقى آمنة
+!up.sh
+!activate_s3.sh
