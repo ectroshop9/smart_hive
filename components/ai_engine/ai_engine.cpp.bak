@@ -1,0 +1,426 @@
+#include "ai_engine.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "nvs_flash.h"
+#include "nvs.h"
+#include "../utils/constants.h"
+#include "../utils/crc16.h"
+#include <cstring>
+#include <cmath>
+#include <vector>
+#include <deque>
+
+namespace AiEngine {
+
+static const char* TAG = "AI_ENGINE";
+static char last_result[128] = "AI: Healthy";
+static HiveState current_state = NormalState{100.0f, 0};
+static HiveState previous_state = NormalState{100.0f, 0};
+static StateChangeCallback state_callback = nullptr;
+static bool running = false;
+
+// ==================== تكييف مع المناخ الجزائري ====================
+#define ALGERIA_DEFAULT_LATITUDE     32.0f
+#define ALGERIA_TEMP_CRITICAL        43.0f
+#define ALGERIA_TEMP_WARNING         38.0f
+#define ALGERIA_HUM_CRITICAL         18.0f
+#define ALGERIA_HUM_WARNING          25.0f
+#define ALGERIA_SWARMING_DROP_RATE   0.6f
+#define ALGERIA_SOUND_SWARMING       75
+#define ALGERIA_VARROA_VIBRATION     65
+
+// ==================== الحلقة الدائرية ====================
+#define HISTORY_SIZE 60
+
+struct CircularBuffer {
+    float data[HISTORY_SIZE];
+    int head;
+    int count;
+    
+    void init() { head = 0; count = 0; memset(data, 0, sizeof(data)); }
+    void push(float v) { data[head] = v; head = (head+1)%HISTORY_SIZE; if(count<HISTORY_SIZE) count++; }
+    float get(int offset) const {
+        if(offset>=count) return 0;
+        int idx = (head-1-offset+HISTORY_SIZE)%HISTORY_SIZE;
+        return data[idx];
+    }
+    float moving_average(int window) const {
+        if(window>count) window=count;
+        if(window==0) return 0;
+        float sum=0;
+        for(int i=0;i<window;i++) sum+=get(i);
+        return sum/window;
+    }
+    float trend() const {
+        if(count<6) return 0;
+        return moving_average(3) - moving_average(6);
+    }
+    bool is_stuck() const {
+        if(count<10) return false;
+        float first=get(0);
+        for(int i=1;i<10;i++) if(get(i)!=first) return false;
+        return true;
+    }
+};
+
+static CircularBuffer weight_history;
+static CircularBuffer temp_history;
+static CircularBuffer sound_history;
+static CircularBuffer vibration_history;
+
+// ==================== إحصائيات الخبير ====================
+static struct {
+    uint32_t total;
+    uint32_t critical;
+    uint32_t warning;
+    uint32_t false_positives;
+    uint32_t stuck_events;
+    float latitude;
+    char region[16];
+} expert_stats;
+
+// ==================== العتبات المتكيفة ====================
+struct AdaptiveThresholds {
+    float temp_critical;
+    float temp_warning;
+    float weight_drop_rate;
+    uint8_t gas_critical;
+    uint8_t sound_swarming;
+    uint8_t varroa_vibration;
+};
+
+static AdaptiveThresholds thresholds[MAX_HIVES + 1];
+
+// ==================== قاعدة بيانات الولايات الجزائرية ====================
+struct WilayaInfo {
+    int id; char name[32]; float max_temp; float min_temp;
+    float optimal_min; float optimal_max; float humidity;
+    bool is_desert; int active_start; int active_end;
+    int siesta_start; int siesta_end; float swarming_sensitivity;
+    uint8_t sound_threshold; uint8_t vibration_threshold;
+    int swarm_start; int swarm_end;
+};
+
+static const WilayaInfo WILAYA_DATABASE[] = {
+    {1, "Adrar", 49.5, 5.0, 20.0, 35.0, 20.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {2, "Chlef", 44.0, 8.0, 18.0, 32.0, 60.0, false, 8, 12, 12, 14, 0.60, 75, 65, 3, 6},
+    {3, "Laghouat", 45.0, 6.0, 18.0, 33.0, 35.0, true, 8, 10, 12, 15, 0.65, 75, 65, 3, 5},
+    {4, "Oum El Bouaghi", 42.0, 4.0, 16.0, 30.0, 55.0, false, 8, 12, 12, 14, 0.60, 70, 65, 4, 7},
+    {5, "Batna", 43.0, 3.0, 15.0, 30.0, 50.0, false, 8, 11, 12, 15, 0.65, 75, 65, 4, 7},
+    {6, "Bejaia", 40.0, 8.0, 18.0, 30.0, 75.0, false, 9, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {7, "Biskra", 46.5, 8.0, 20.0, 35.0, 30.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {8, "Bechar", 47.5, 5.0, 18.0, 34.0, 25.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {9, "Blida", 42.0, 8.0, 18.0, 32.0, 70.0, false, 9, 12, 12, 14, 0.60, 75, 65, 3, 6},
+    {10, "Bouira", 42.0, 6.0, 16.0, 30.0, 65.0, false, 8, 12, 12, 14, 0.60, 75, 65, 3, 6},
+    {11, "Tamanrasset", 45.0, 5.0, 18.0, 32.0, 15.0, true, 7, 9, 10, 17, 0.65, 75, 60, 2, 3},
+    {12, "Tebessa", 43.0, 3.0, 14.0, 30.0, 50.0, false, 8, 11, 12, 15, 0.65, 75, 65, 4, 7},
+    {13, "Tlemcen", 40.0, 8.0, 18.0, 30.0, 65.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {14, "Tiaret", 43.0, 5.0, 16.0, 31.0, 50.0, false, 8, 11, 12, 15, 0.65, 75, 65, 3, 6},
+    {15, "Tizi Ouzou", 41.5, 8.0, 18.0, 30.0, 75.0, false, 8, 11, 12, 14, 0.60, 75, 65, 3, 6},
+    {16, "Algiers", 41.0, 8.0, 18.0, 30.0, 70.0, false, 9, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {17, "Djelfa", 44.0, 3.0, 15.0, 32.0, 40.0, true, 8, 10, 12, 15, 0.65, 75, 65, 3, 6},
+    {18, "Jijel", 39.0, 8.0, 18.0, 30.0, 80.0, false, 9, 12, 12, 14, 0.55, 70, 65, 2, 5},
+    {19, "Setif", 42.5, 3.0, 15.0, 30.0, 55.0, false, 8, 11, 12, 15, 0.60, 75, 65, 4, 7},
+    {20, "Saida", 42.0, 5.0, 16.0, 31.0, 50.0, false, 8, 11, 12, 15, 0.60, 75, 65, 3, 6},
+    {21, "Skikda", 39.5, 8.0, 18.0, 30.0, 70.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {22, "Sidi Bel Abbes", 42.0, 6.0, 17.0, 31.0, 55.0, false, 8, 12, 12, 14, 0.60, 75, 65, 3, 6},
+    {23, "Annaba", 39.0, 8.0, 18.0, 30.0, 70.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {24, "Guelma", 43.0, 6.0, 16.0, 31.0, 60.0, false, 8, 11, 12, 15, 0.65, 75, 65, 3, 6},
+    {25, "Constantine", 43.0, 4.0, 15.0, 30.0, 55.0, false, 8, 11, 12, 15, 0.65, 75, 65, 4, 7},
+    {26, "Medea", 41.0, 6.0, 16.0, 30.0, 60.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {27, "Mostaganem", 39.0, 8.0, 18.0, 30.0, 65.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {28, "M'Sila", 45.0, 5.0, 17.0, 33.0, 35.0, true, 8, 10, 12, 15, 0.70, 80, 60, 3, 6},
+    {29, "Mascara", 42.0, 6.0, 17.0, 31.0, 50.0, false, 8, 11, 12, 15, 0.60, 75, 65, 3, 6},
+    {30, "Ouargla", 48.5, 5.0, 20.0, 36.0, 20.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {31, "Oran", 40.0, 8.0, 18.0, 30.0, 65.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {32, "El Bayadh", 44.5, 3.0, 15.0, 32.0, 35.0, true, 8, 10, 12, 15, 0.65, 75, 65, 3, 5},
+    {33, "Illizi", 48.0, 5.0, 20.0, 35.0, 15.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {34, "BBA", 42.0, 6.0, 16.0, 31.0, 60.0, false, 8, 12, 12, 14, 0.60, 75, 65, 3, 6},
+    {35, "Boumerdes", 40.0, 8.0, 18.0, 30.0, 70.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {36, "El Tarf", 39.0, 8.0, 18.0, 30.0, 75.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {37, "Tindouf", 49.0, 5.0, 20.0, 36.0, 15.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {38, "Tissemsilt", 42.0, 5.0, 16.0, 31.0, 55.0, false, 8, 11, 12, 15, 0.60, 75, 65, 3, 6},
+    {39, "El Oued", 47.5, 5.0, 20.0, 36.0, 25.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {40, "Khenchela", 42.0, 4.0, 15.0, 30.0, 50.0, false, 8, 11, 12, 15, 0.60, 75, 65, 4, 7},
+    {41, "Souk Ahras", 41.0, 6.0, 16.0, 30.0, 65.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {42, "Tipaza", 40.0, 8.0, 18.0, 30.0, 70.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {43, "Mila", 42.0, 6.0, 16.0, 31.0, 60.0, false, 8, 11, 12, 15, 0.60, 75, 65, 3, 6},
+    {44, "Ain Defla", 43.0, 6.0, 17.0, 32.0, 55.0, false, 8, 12, 12, 14, 0.60, 75, 65, 3, 6},
+    {45, "Naama", 44.0, 4.0, 16.0, 32.0, 35.0, true, 8, 10, 12, 15, 0.65, 75, 65, 3, 5},
+    {46, "Ain Temouchent", 39.0, 8.0, 18.0, 30.0, 65.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {47, "Ghardaia", 46.5, 5.0, 20.0, 35.0, 25.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {48, "Relizane", 44.0, 6.0, 17.0, 32.0, 50.0, false, 8, 12, 12, 14, 0.60, 75, 65, 3, 6},
+    {49, "El M'Ghair", 47.5, 5.0, 20.0, 36.0, 25.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {50, "El Meniaa", 48.0, 5.0, 20.0, 36.0, 20.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {51, "Ouled Djellal", 46.5, 5.0, 18.0, 35.0, 30.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {52, "Bordj Baji Mokhtar", 49.5, 5.0, 20.0, 38.0, 10.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {53, "Beni Abbes", 48.5, 5.0, 20.0, 36.0, 15.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {54, "Timimoun", 48.5, 5.0, 20.0, 36.0, 15.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {55, "Touggourt", 48.0, 5.0, 20.0, 36.0, 20.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {56, "Djanet", 44.0, 5.0, 18.0, 32.0, 15.0, true, 7, 9, 11, 16, 0.65, 75, 60, 2, 3},
+    {57, "In Salah", 49.5, 5.0, 20.0, 38.0, 10.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {58, "In Guezzam", 49.5, 5.0, 20.0, 38.0, 10.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4},
+    {59, "Aflou", 43.0, 3.0, 15.0, 32.0, 35.0, true, 8, 10, 12, 15, 0.65, 75, 65, 3, 5},
+    {60, "Ksar El Boukhari", 42.5, 5.0, 16.0, 31.0, 45.0, false, 8, 11, 12, 15, 0.60, 75, 65, 3, 6},
+    {61, "M'Sila_East", 45.0, 5.0, 17.0, 33.0, 35.0, true, 8, 10, 12, 15, 0.70, 80, 60, 3, 6},
+    {62, "Barika", 44.0, 5.0, 17.0, 33.0, 40.0, true, 8, 10, 12, 15, 0.65, 75, 65, 3, 6},
+    {63, "Ain Beida", 41.0, 6.0, 16.0, 30.0, 55.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {64, "Tiaret_West", 42.0, 5.0, 16.0, 31.0, 50.0, false, 8, 11, 12, 15, 0.60, 75, 65, 3, 6},
+    {65, "Lakhdaria", 41.0, 8.0, 18.0, 30.0, 65.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {66, "Maghnia", 40.0, 8.0, 18.0, 30.0, 60.0, false, 8, 12, 12, 14, 0.55, 70, 65, 3, 6},
+    {67, "El Eulma", 41.5, 5.0, 16.0, 30.0, 55.0, false, 8, 11, 12, 15, 0.60, 75, 65, 4, 7},
+    {68, "Bou Saada", 45.5, 5.0, 18.0, 34.0, 30.0, true, 7, 9, 11, 16, 0.70, 80, 60, 3, 6},
+    {69, "Debdeb", 48.0, 5.0, 20.0, 36.0, 20.0, true, 7, 9, 11, 16, 0.70, 80, 60, 2, 4}
+};
+
+// ==================== دوال الوعي الجغرافي ====================
+static float get_algeria_latitude(const char* region) {
+    if(strcmp(region, "north") == 0) return 36.8f;
+    if(strcmp(region, "highlands") == 0) return 35.5f;
+    if(strcmp(region, "sahara") == 0) return 27.0f;
+    return 32.0f;
+}
+
+static int get_sunset_hour() {
+    time_t now; time(&now);
+    struct tm* tm = localtime(&now);
+    int day = tm->tm_yday;
+    float lat = expert_stats.latitude;
+    if(lat == 0) lat = ALGERIA_DEFAULT_LATITUDE;
+    
+    float decl = 23.45f * sin(2 * M_PI * (284 + day) / 365.0f);
+    float cos_arg = -tan(lat * M_PI / 180) * tan(decl * M_PI / 180);
+    if(cos_arg > 1) cos_arg = 1; if(cos_arg < -1) cos_arg = -1;
+    float ha = acos(cos_arg);
+    return (int)(12 + ha * 12 / M_PI);
+}
+
+static bool is_night_time() {
+    time_t now; time(&now);
+    struct tm* tm = localtime(&now);
+    int sunset = get_sunset_hour();
+    return (tm->tm_hour < 6 || tm->tm_hour > sunset);
+}
+
+static float get_time_factor() {
+    if(is_night_time()) return 0.4f;
+    time_t now; time(&now);
+    struct tm* tm = localtime(&now);
+    int hour = tm->tm_hour;
+    
+    if(expert_stats.latitude < 30.0f) {
+        if(hour >= 7 && hour <= 10) return 1.5f;
+        if(hour >= 16 && hour <= 18) return 1.3f;
+        if(hour >= 11 && hour <= 15) return 0.4f;
+        return 0.8f;
+    }
+    
+    if(hour >= 9 && hour <= 12) return 1.4f;
+    if(hour >= 14 && hour <= 17) return 1.2f;
+    if(hour >= 12 && hour <= 14) return 0.7f;
+    return 1.0f;
+}
+
+// ==================== دوال التحليل ====================
+static float get_weight_trend() { return weight_history.trend(); }
+
+static float calculate_health_score(const HiveContext& ctx, int hive_id) {
+    const auto& th = thresholds[hive_id];
+    float score = 100.0f;
+    time_t now; time(&now);
+    struct tm* tm = localtime(&now);
+    int month = tm->tm_mon + 1;
+    bool is_summer = (month >= 6 && month <= 8);
+    
+    if(ctx.temperature_avg > th.temp_warning) {
+        if(is_summer && ctx.temperature_avg < th.temp_warning + 3.0f) score -= 10;
+        else score -= 20;
+    }
+    if(ctx.humidity < ALGERIA_HUM_CRITICAL) score -= 15;
+    else if(ctx.humidity < ALGERIA_HUM_WARNING) score -= 8;
+    if(ctx.gas > th.gas_critical) score -= 30;
+    else if(ctx.gas > GAS_WARNING) score -= 15;
+    if(ctx.battery < BATTERY_CRITICAL) score -= 30;
+    else if(ctx.battery < BATTERY_WARNING) score -= 15;
+    
+    float trend = get_weight_trend();
+    if(trend < -ALGERIA_SWARMING_DROP_RATE) {
+        if(is_summer && trend < -0.8f) score -= 25;
+        else score -= 25;
+    }
+    score *= 1.05f;
+    if(score < 0) score = 0;
+    if(score > 100) score = 100;
+    return score;
+}
+
+static float predict_swarming_risk(const HiveContext& ctx, int hive_id) {
+    const auto& th = thresholds[hive_id];
+    float risk = 0;
+    float trend = get_weight_trend();
+    time_t now; time(&now);
+    struct tm* tm = localtime(&now);
+    int month = tm->tm_mon + 1;
+    bool is_spring = (month >= 3 && month <= 5);
+    
+    if(trend < -th.weight_drop_rate) risk += 50;
+    else if(trend < -0.4f) risk += 25;
+    if(ctx.sound > th.sound_swarming) risk += 30;
+    else if(ctx.sound > 65) risk += 15;
+    if(ctx.motion_entrance && ctx.motion_inside) risk += 20;
+    if(is_spring) risk *= 1.3f;
+    risk *= get_time_factor();
+    return risk > 100 ? 100 : risk;
+}
+
+// ==================== دوال النظام السيادي ====================
+void set_region(const char* region) {
+    strncpy(expert_stats.region, region, sizeof(expert_stats.region)-1);
+    expert_stats.latitude = get_algeria_latitude(region);
+    ESP_LOGI(TAG, "🌍 تم ضبط المنطقة: %s (خط العرض: %.1f°)", region, expert_stats.latitude);
+}
+
+// ==================== دالة التحليل الرئيسية ====================
+void analyze(const HiveContext& ctx, int hive_id) {
+    if(!running) return;
+    
+    weight_history.push(ctx.weight);
+    temp_history.push(ctx.temperature_avg);
+    sound_history.push(ctx.sound);
+    vibration_history.push(ctx.vibration);
+    
+    const auto& th = thresholds[hive_id];
+    float swarming_risk = predict_swarming_risk(ctx, hive_id);
+    float health_score = calculate_health_score(ctx, hive_id);
+    
+    AIResult result = AIResult::Healthy;
+    
+    if(ctx.temperature_avg > th.temp_critical || ctx.gas > th.gas_critical) {
+        result = AIResult::Anomaly;
+        expert_stats.critical++;
+        snprintf(last_result, sizeof(last_result),
+                 "⚠️ حرج: حرارة=%.1f°C غاز=%d | %s",
+                 ctx.temperature_avg, ctx.gas, expert_stats.region);
+    }
+    else if(swarming_risk > 70) {
+        result = AIResult::Swarming;
+        expert_stats.critical++;
+        snprintf(last_result, sizeof(last_result),
+                 "🚨 خطر تطريد: %.0f%% | انخفاض الوزن=%.2f كجم/ساعة",
+                 swarming_risk, get_weight_trend());
+    }
+    else if(ctx.vibration > th.varroa_vibration) {
+        result = AIResult::Varroa;
+        expert_stats.warning++;
+        snprintf(last_result, sizeof(last_result),
+                 "🕷️ فاریوا: اهتزاز=%d | عالج فوراً", ctx.vibration);
+    }
+    else if(!ctx.motion_entrance && !ctx.motion_inside && !is_night_time()) {
+        result = AIResult::QueenLost;
+        expert_stats.warning++;
+        snprintf(last_result, sizeof(last_result),
+                 "👑 فقدان الملكة: لا حركة | %s", expert_stats.region);
+    }
+    else {
+        result = AIResult::Healthy;
+        snprintf(last_result, sizeof(last_result),
+                 "✅ سليم: نسبة الصحة=%.0f%% | حرارة=%.1f°C | %s",
+                 health_score, ctx.temperature_avg, expert_stats.region);
+    }
+    
+    expert_stats.total++;
+    
+    HiveState new_state;
+    switch(result) {
+        case AIResult::Swarming:
+            new_state = SwarmingState{swarming_risk, time(nullptr), 1};
+            break;
+        case AIResult::QueenLost:
+            new_state = QueenLostState{time(nullptr), 70.0f};
+            break;
+        case AIResult::Varroa:
+            new_state = SickState{SickState::Varroa, 60.0f, 0.75f};
+            break;
+        case AIResult::Anomaly:
+            new_state = CriticalState{CriticalState::Temperature, ctx.temperature_avg, th.temp_critical};
+            break;
+        default:
+            new_state = NormalState{health_score, time(nullptr)};
+            break;
+    }
+    
+    if(new_state.index() != current_state.index()) {
+        previous_state = current_state;
+        current_state = new_state;
+        if(state_callback) state_callback(previous_state, current_state);
+        ESP_LOGI(TAG, "🎯 الخلية %d: %s → %s", hive_id,
+                 stateToString(previous_state), stateToString(current_state));
+    }
+    
+    ESP_LOGI(TAG, "🧠 الخلية %d: %s", hive_id, last_result);
+}
+
+// ==================== API العامة ====================
+void init(void) {
+    weight_history.init();
+    temp_history.init();
+    sound_history.init();
+    vibration_history.init();
+    memset(&expert_stats, 0, sizeof(expert_stats));
+    expert_stats.latitude = ALGERIA_DEFAULT_LATITUDE;
+    strcpy(expert_stats.region, "Algeria");
+    
+    for(int i = 1; i <= MAX_HIVES; i++) {
+        thresholds[i].temp_critical = ALGERIA_TEMP_CRITICAL;
+        thresholds[i].temp_warning = ALGERIA_TEMP_WARNING;
+        thresholds[i].weight_drop_rate = ALGERIA_SWARMING_DROP_RATE;
+        thresholds[i].gas_critical = GAS_CRITICAL;
+        thresholds[i].sound_swarming = ALGERIA_SOUND_SWARMING;
+        thresholds[i].varroa_vibration = ALGERIA_VARROA_VIBRATION;
+    }
+    
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "🎖️ نظام خبير متكيف مع المناخ الجزائري");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "🌍 خط العرض: %.1f°", expert_stats.latitude);
+    ESP_LOGI(TAG, "🔥 درجة الحرارة الحرجة: %.0f°C", ALGERIA_TEMP_CRITICAL);
+    ESP_LOGI(TAG, "⚠️ درجة الحرارة التحذيرية: %.0f°C", ALGERIA_TEMP_WARNING);
+    ESP_LOGI(TAG, "📉 عتبة التطريد: %.1f كجم/ساعة", ALGERIA_SWARMING_DROP_RATE);
+    ESP_LOGI(TAG, "🔊 عتبة الصوت للتطريد: %d", ALGERIA_SOUND_SWARMING);
+    ESP_LOGI(TAG, "🐝 سلالات النحل: التلي، التحتي، الصحراوي");
+    ESP_LOGI(TAG, "========================================");
+}
+
+void start(void) { running = true; ESP_LOGI(TAG, "✅ نظام الخبير يعمل"); }
+void stop(void) { running = false; ESP_LOGI(TAG, "⏹️ نظام الخبير متوقف"); }
+void restart(void) { stop(); init(); start(); }
+bool isRunning(void) { return running; }
+void setDataReady(void) {}
+const char* getLastResult(void) { return last_result; }
+HiveState getCurrentState(void) { return current_state; }
+void registerStateCallback(StateChangeCallback callback) { state_callback = callback; }
+void report_false_positive(int hive_id, AIResult incorrect_result) { expert_stats.false_positives++; }
+void set_latitude(float lat) { expert_stats.latitude = lat; }
+
+bool configure_system(const char* brand_name, int wilaya_id, const char* admin_password) { return true; }
+bool authenticate(const char* password) { return true; }
+const WilayaInfo* get_current_wilaya(void) { return nullptr; }
+const char* get_wilaya_name(int wilaya_id) { return "Algeria"; }
+// float get_wilaya_max_temp(int wilaya_id) { return ALGERIA_TEMP_CRITICAL; }
+bool factory_reset(const char* password) { return false; }
+bool is_configured(void) { return true; }
+
+const char* get_expert_statistics(void) {
+    static char stats[256];
+    snprintf(stats, sizeof(stats),
+             "📊 المجموع:%lu | حرج:%lu | تحذير:%lu | خاطئ:%lu | عالق:%lu | خط العرض:%.1f° | %s",
+             expert_stats.total, expert_stats.critical, expert_stats.warning,
+             expert_stats.false_positives, expert_stats.stuck_events, 
+             expert_stats.latitude, expert_stats.region);
+    return stats;
+}
+
+} // namespace AiEngine

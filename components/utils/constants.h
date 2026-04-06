@@ -49,3 +49,4 @@
 #define FIXED_POINT_SCALE  256.0f
 #define FLOAT_TO_FIXED(f)  ((int32_t)((f) * FIXED_POINT_SCALE))
 #define FIXED_TO_FLOAT(f)  (((float)(f)) / FIXED_POINT_SCALE)
+#define ESP_INTR_CPU_AFFINITY_AUTO 0xFFFFFFFF

@@ -10,6 +10,8 @@ set(EXTRA_COMPONENT_DIRS
     components/alarm
     components/ai_engine
     components/system
+    components/web_server
+    components/setup_wizard
 )
 
 project(smart_hive_master)

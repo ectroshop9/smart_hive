@@ -10,9 +10,10 @@ idf_component_register(
         alarm
         ai_engine
         system
-        esp_psram
-    PRIV_REQUIRES 
+        web_server
+        setup_wizard
         lvgl
+    PRIV_REQUIRES 
         nvs_flash
         esp_adc
         esp_lcd

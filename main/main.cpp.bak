@@ -16,7 +16,6 @@
 #include "hive_manager.h"
 #include "alarm.h"
 #include "ai_engine.h"
-#include "web_server.h"
 
 static const char* TAG = "MAIN";
 static QueueHandle_t ui_update_queue = nullptr;
@@ -45,39 +44,11 @@ private:
     SemaphoreHandle_t m_mutex;
 };
 
-// ========== تحديث خادم الويب بالبيانات ==========
-static void update_web_server(const hive_data_t* data) {
-    if (!data) return;
-    
-    float temp_avg = (hive_get_temp_1(data) + hive_get_temp_2(data) + hive_get_temp_3(data)) / 3.0f;
-    float health_score = 85;  // يمكن تحسينها لاحقاً
-    float colony_strength = 75;
-    
-    web_server_update_data(
-        temp_avg,                    // درجة الحرارة
-        hive_get_hum(data),         // الرطوبة
-        hive_get_weight(data),      // الوزن
-        data->battery / 10.0f,      // البطارية
-        data->sound,                // الصوت
-        data->gas,                  // الغاز
-        data->uv,                   // UV
-        data->vibration,            // الاهتزاز
-        data->motion_entrance,      // حركة المدخل
-        data->motion_inside,        // حركة الداخل
-        (int)colony_strength,       // قوة المستعمرة
-        (int)health_score,          // درجة الصحة
-        hive_get_temp_1(data),      // حرارة عليا
-        hive_get_temp_2(data),      // حرارة وسطى
-        hive_get_temp_3(data)       // حرارة سفلى
-    );
-}
-
 // ========== Callbacks ==========
 static void onEspNowData(const hive_data_t* data) {
     if (!data || !system_ready) return;
     
     HiveManager::updateHive(*data);
-    update_web_server(data);  // تحديث خادم الويب
     int selected = HiveManager::getSelected();
     
     if (ui_update_queue) {
@@ -111,7 +82,6 @@ static void ui_update_task(void *pv) {
         if (xQueueReceive(ui_update_queue, &msg, pdMS_TO_TICKS(10)) == pdTRUE) {
             MutexLock lock(display_get_mutex());
             display_update_hive(&msg.data);
-            update_web_server(&msg.data);
         }
         
         MutexLock lock(display_get_mutex());
@@ -138,7 +108,9 @@ extern "C" void app_main(void) {
     ESP_LOGI(TAG, "SMART HIVE MASTER v4.0 - Industrial");
     ESP_LOGI(TAG, "========================================");
     
-    // 1. PSRAM غير مستخدمة حالياً
+    // 1. PSRAM غير مستخدمة حالياً (تم تعليقها لتجنب مشاكل الربط)
+    // esp_psram_init();
+    // ESP_LOGI(TAG, "PSRAM: %" PRIu32 " KB", (uint32_t)(esp_psram_get_size() / 1024));
     ESP_LOGI(TAG, "Running without PSRAM (Internal RAM only)");
     
     // 2. تهيئة NVS
@@ -175,17 +147,13 @@ extern "C" void app_main(void) {
     // 8. بدء AI Engine
     AiEngine::start();
     
-    // 9. بدء خادم الويب
-    start_web_server();
-    ESP_LOGI(TAG, "🌐 Web Server on http://%s", get_server_ip());
-    
-    // 10. بدء UI Task
+    // 9. بدء UI Task
     xTaskCreatePinnedToCore(ui_update_task, "ui_updater", 4096, nullptr, 3, nullptr, 1);
     
     system_ready = true;
     ESP_LOGI(TAG, "✅ All Systems Online!");
     
-    // 11. الحلقة الرئيسية
+    // 10. الحلقة الرئيسية
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }

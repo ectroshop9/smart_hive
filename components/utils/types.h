@@ -41,7 +41,6 @@
 
 // ==================== AI Settings ====================
 #define AI_TASK_STACK_SIZE      8192
-#define AI_TASK_PRIORITY        4
 #define AI_TASK_WATCHDOG_TIMEOUT_MS 5000
 
 // ==================== ESP-NOW ====================
@@ -220,3 +219,23 @@ static inline const char* stateToString(const HiveState& state) {
 
 // تأكيد حجم الـ Struct في وقت الترجمة
 static_assert(sizeof(SavedState) == 20, "SavedState size must be 20 bytes");
+// تعريف WilayaInfo للخبير الجزائري
+struct WilayaInfo {
+    int id;
+    char name[32];
+    float max_temperature;
+    float min_temperature;
+    float optimal_temp_min;
+    float optimal_temp_max;
+    float humidity_avg;
+    bool is_desert;
+    int active_hour_start;
+    int active_hour_end;
+    int siesta_start;
+    int siesta_end;
+    float swarming_sensitivity;
+    uint8_t sound_threshold;
+    uint8_t vibration_threshold;
+    int swarm_start_month;
+    int swarm_end_month;
+};
