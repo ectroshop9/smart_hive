@@ -10,6 +10,9 @@
 #include "esp_lcd_panel_ops.h"
 #include <inttypes.h>
 
+// إضافات الماستر لنظام الملفات
+#include "esp_littlefs.h" 
+
 #include "types.h"
 #include "constants.h"
 #include "display.h"
@@ -26,8 +29,6 @@ static bool system_ready = false;
 
 static TaskHandle_t ui_task_handle = NULL;
 static TaskHandle_t ai_task_handle = NULL;
-
-// 
 
 // ========== نظام التشخيص الذاتي (Diagnostics) ==========
 typedef struct {
@@ -46,7 +47,6 @@ static void perform_system_diagnostics(void) {
     master_health.memory_ok = (free_ram > 10240); // التحذير إذا قل عن 10KB
     
     // 2. فحص حالة الاتصال (آخر تحديث من HiveManager)
-    // ملاحظة: نفترض وجود دالة للحصول على وقت آخر استقبال
     master_health.espnow_ok = (pdTICKS_TO_MS(xTaskGetTickCount()) - master_health.last_sync_time < 60000);
 
     // 3. طباعة تقرير الحالة في السجل
@@ -54,6 +54,33 @@ static void perform_system_diagnostics(void) {
              master_health.memory_ok ? "OK" : "LOW",
              master_health.espnow_ok ? "ALIVE" : "DEAD",
              master_health.ai_engine_ok ? "RUNNING" : "STOPPED");
+}
+
+// ========== تهيئة نظام ملفات LittleFS (لقراءة الـ 1500 سطر) ==========
+static void init_littlefs(void) {
+    ESP_LOGI(TAG, "📂 Mounting LittleFS storage...");
+    esp_vfs_littlefs_conf_t conf = {
+        .base_path = "/data",
+        .partition_label = "storage",
+        .format_if_mount_failed = true,
+        .dont_mount = false
+    };
+
+    esp_err_t ret = esp_vfs_littlefs_register(&conf);
+    if (ret != ESP_OK) {
+        if (ret == ESP_FAIL) {
+            ESP_LOGE(TAG, "❌ Failed to mount or format filesystem");
+        } else if (ret == ESP_ERR_NOT_FOUND) {
+            ESP_LOGE(TAG, "❌ Failed to find LittleFS partition");
+        } else {
+            ESP_LOGE(TAG, "❌ Failed to initialize LittleFS (%s)", esp_err_to_name(ret));
+        }
+        return;
+    }
+
+    size_t total = 0, used = 0;
+    esp_littlefs_info("storage", &total, &used);
+    ESP_LOGI(TAG, "✅ LittleFS Mounted: %d/%d KB used", (int)used/1024, (int)total/1024);
 }
 
 // ========== فحص وعرض معلومات الذاكرة (أصلية) ==========
@@ -127,7 +154,7 @@ static void update_web_server(const hive_data_t* data) {
 static void onEspNowData(const hive_data_t* data) {
     if (!data || !system_ready) return;
     
-    master_health.last_sync_time = pdTICKS_TO_MS(xTaskGetTickCount()); // تحديث وقت التشخيص
+    master_health.last_sync_time = pdTICKS_TO_MS(xTaskGetTickCount()); 
     
     hive_manager_lock_write();
     HiveManager::updateHive(*data);
@@ -181,9 +208,7 @@ static void onStateChange(const HiveState& oldState, const HiveState& newState) 
 static void monitor_task(void *pv) {
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(30000));
-        
-        perform_system_diagnostics(); // إضافة حالة التشخيص هنا
-        
+        perform_system_diagnostics(); 
         if (ui_task_handle) {
             UBaseType_t watermark = uxTaskGetStackHighWaterMark(ui_task_handle);
             ESP_LOGI(TAG, "📊 UI Task stack free: %d bytes", (int)watermark * 4);
@@ -225,6 +250,9 @@ extern "C" void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
     
+    // --- تهيئة نظام الملفات قبل تشغيل السيرفر ---
+    init_littlefs(); 
+    
     ui_update_queue = xQueueCreate(10, sizeof(ui_update_msg_t));
     configASSERT(ui_update_queue);
     
@@ -244,7 +272,9 @@ extern "C" void app_main(void) {
     espnow_handler_register_callback(onEspNowData);
     
     AiEngine::start();
-    start_web_server();
+    
+    // الآن السيرفر سيجد ملفاته في /data بفضل LittleFS
+    start_web_server(); 
     
     xTaskCreatePinnedToCore(ui_update_task, "ui_task", 16384, nullptr, 3, &ui_task_handle, 1);
     xTaskCreatePinnedToCore(monitor_task, "sys_monitor", 4096, nullptr, 1, NULL, 0);

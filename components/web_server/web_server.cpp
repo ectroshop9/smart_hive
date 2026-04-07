@@ -91,14 +91,28 @@ static esp_err_t api_handler(httpd_req_t *req) {
 
 bool start_web_server(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    
+    config.server_port = 80; 
+    config.stack_size = 10240;      // ذاكرة أكبر لمعالجة الـ JSON
+    config.max_uri_handlers = 10;   // لضمان عدم رفض الروابط
+    config.lru_purge_enable = true; // مسح الاتصالات الميتة فوراً
+    
+    // نزيد وقت الانتظار لمنع الـ Bad Gateway في المتصفحات البطيئة
+    config.recv_wait_timeout = 30;
+    config.send_wait_timeout = 30;
+
+    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     if (httpd_start(&server, &config) == ESP_OK) {
-        httpd_uri_t root = { .uri = "/", .method = HTTP_GET, .handler = root_handler, .user_ctx = NULL };
+        // تسجيل الروابط
+        httpd_uri_t root = { .uri = "/", .method = HTTP_GET, .handler = root_handler };
         httpd_register_uri_handler(server, &root);
-        httpd_uri_t api = { .uri = "/api/data", .method = HTTP_GET, .handler = api_handler, .user_ctx = NULL };
+        
+        httpd_uri_t api = { .uri = "/api/data", .method = HTTP_GET, .handler = api_handler };
         httpd_register_uri_handler(server, &api);
-        ESP_LOGI(TAG, "✅ Web Server started on http://%s", get_server_ip());
+        
         return true;
     }
+    ESP_LOGE(TAG, "❌ Failed to start server!");
     return false;
 }
 

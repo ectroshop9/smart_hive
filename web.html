@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART HIVE - WEB INTERFACE</title>
+    <style>
+        :root { --gold: #ffc107; --dark: #121212; --card: #1e1e1e; --green: #2ecc71; }
+        body { background: var(--dark); color: white; font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 20px; }
+        
+        /* الهيدر العلوي */
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--gold); padding-bottom: 10px; margin-bottom: 20px; }
+        .status-dot { height: 12px; width: 12px; background: var(--green); border-radius: 50%; display: inline-block; box-shadow: 0 0 10px var(--green); }
+
+        /* شريط الخطوات (Progress Bar) */
+        .steps-container { display: flex; justify-content: space-between; margin-bottom: 30px; background: var(--card); padding: 15px; border-radius: 10px; }
+        .step-item { flex: 1; text-align: center; color: #555; position: relative; }
+        .step-item.active { color: var(--gold); font-weight: bold; }
+        .step-item.completed { color: var(--green); }
+
+        /* منطقة العمل الرئيسية */
+        .main-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .control-panel { background: var(--card); padding: 20px; border-radius: 15px; border: 1px solid #333; }
+        .sidebar { background: var(--card); padding: 20px; border-radius: 15px; border: 1px solid #333; }
+
+        /* أزرار التحكم */
+        .btn { background: var(--gold); color: black; border: none; padding: 12px 25px; border-radius: 5px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn:hover { background: #e5ad06; transform: scale(1.05); }
+        .btn-outline { background: transparent; border: 1px solid var(--gold); color: var(--gold); margin-right: 10px; }
+
+        /* البيانات السريعة */
+        .mini-stat { display: flex; justify-content: space-between; margin-bottom: 15px; padding-bottom: 5px; border-bottom: 1px solid #333; }
+        .mini-stat span:last-child { color: var(--gold); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>
+            <span class="status-dot"></span>
+            <span style="margin-right: 10px;">نظام الماستر: متصل</span>
+        </div>
+        <h2 style="margin: 0; color: var(--gold);">🐝 SMART HIVE MASTER v5.3</h2>
+    </div>
+
+    <div class="steps-container">
+        <div class="step-item completed">1. تهيئة النظام ✅</div>
+        <div class="step-item active">2. الفحص الميداني 🔍</div>
+        <div class="step-item">3. تحليل البيانات 📊</div>
+        <div class="step-item">4. التقرير النهائي 📝</div>
+    </div>
+
+    <div class="main-layout">
+        <div class="control-panel">
+            <h3>المرحلة الحالية: الفحص الميداني</h3>
+            <p style="color: #888;">قم بتأكيد حالة الملكة ونظافة الخلية للانتقال للخطوة التالية.</p>
+            
+            <div style="margin-top: 30px; display: flex; gap: 15px;">
+                <button class="btn">تأكيد الخطوة (OK)</button>
+                <button class="btn btn-outline">إلغاء العملية</button>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <h3>قراءات فورية</h3>
+            <div class="mini-stat"><span>🌡️ درجة الحرارة</span><span id="t">34.5°C</span></div>
+            <div class="mini-stat"><span>⚖️ الوزن الحالي</span><span id="w">15.2 kg</span></div>
+            <div class="mini-stat"><span>🔋 مستوى الطاقة</span><span id="b">12.8 V</span></div>
+            <div class="mini-stat"><span>📡 قوة الإشارة</span><span>98%</span></div>
+        </div>
+    </div>
+
+</body>
+</html>

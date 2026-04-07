@@ -1,18 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
+
+# أخبر "الشال" أن كل مكوناتك (القديمة والجديدة) موجودة في هذا المجلد
+set(EXTRA_COMPONENT_DIRS "components")
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 
-set(EXTRA_COMPONENT_DIRS
-    components/utils
-    components/display
-    components/joystick
-    components/espnow_handler
-    components/hive_manager
-    components/alarm
-    components/ai_engine
-    components/system
-    components/web_server
-    components/setup_wizard
-    components/nvs_logger
-)
-
+# اسم المشروع الخاص بك
 project(smart_hive_master)

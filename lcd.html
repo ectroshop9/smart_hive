@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        :root { --gold: #ffc107; --bg: #0a0a0a; --card: #151515; }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        
+        /* إطار الشاشة الفيزيائية المحاكي */
+        .monitor { 
+            width: 320px; height: 240px; 
+            background: #000; border: 4px solid #333; border-radius: 15px;
+            position: relative; overflow: hidden; box-shadow: 0 0 30px rgba(255, 193, 7, 0.15);
+        }
+
+        /* شريط الحالة العلوي */
+        .status-bar { background: rgba(255, 193, 7, 0.1); height: 25px; display: flex; justify-content: space-between; align-items: center; padding: 0 10px; font-size: 10px; border-bottom: 1px solid rgba(255,193,7,0.2); color: var(--gold); }
+
+        /* شبكة البيانات */
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; height: calc(100% - 35px); }
+        
+        .card { 
+            background: var(--card); border: 1px solid #222; border-radius: 8px; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: 0.3s; position: relative; overflow: hidden;
+        }
+        .card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: var(--gold); opacity: 0.3; }
+
+        .label { font-size: 9px; color: #888; letter-spacing: 1px; margin-bottom: 4px; }
+        .val { font-size: 22px; color: var(--gold); font-weight: bold; font-family: 'Courier New', Courier, monospace; text-shadow: 0 0 8px rgba(255, 193, 7, 0.4); }
+        .unit { font-size: 9px; color: #555; margin-left: 2px; }
+
+        /* نبض للحرارة إذا كانت عالية */
+        .warning { animation: pulse 1.5s infinite; color: #ff3e3e !important; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+    </style>
+</head>
+<body>
+    <h2 style="color: var(--gold); margin-bottom: 10px;">👁️ معاينة المنحل الملكي</h2>
+    <div class="monitor">
+        <div class="status-bar">
+            <span>🐝 HIVE-01: ONLINE</span>
+            <span>📡 SIG: 92% | 🔋 12.4V</span>
+        </div>
+        <div class="grid">
+            <div class="card"><span class="label">TEMPERATURE</span><div><span class="val warning">38.5</span><span class="unit">°C</span></div></div>
+            <div class="card"><span class="label">HUMIDITY</span><div><span class="val">42.1</span><span class="unit">%</span></div></div>
+            <div class="card"><span class="label">WEIGHT</span><div><span class="val">14.82</span><span class="unit">kg</span></div></div>
+            <div class="card"><span class="label">CO2 LEVEL</span><div><span class="val">420</span><span class="unit">ppm</span></div></div>
+        </div>
+    </div>
+    <p style="color: #444; font-size: 11px; margin-top: 15px;">UX DESIGN v2.0 - "The Master Edition"</p>
+</body>
+</html>

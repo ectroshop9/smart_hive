@@ -26,6 +26,8 @@ idf_component_register(
         esp_system
         esp_psram
         esp_pm
+        esp_littlefs
 )
 
 target_compile_options(${COMPONENT_TARGET} PRIVATE -std=c++17 -Wno-missing-field-initializers)
+littlefs_create_partition_image(storage ../data FLASH_IN_PROJECT)
