@@ -20,3 +20,9 @@ int getSelected(void);
 } // namespace HiveManager
 
 #endif
+
+// دوال حماية البيانات (Mutex)
+void hive_manager_lock_read(void);
+void hive_manager_unlock_read(void);
+void hive_manager_lock_write(void);
+void hive_manager_unlock_write(void);

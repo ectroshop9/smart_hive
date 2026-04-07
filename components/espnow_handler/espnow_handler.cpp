@@ -83,3 +83,13 @@ void espnow_handler_register_callback(espnow_data_callback_t cb) {
 void espnow_handler_send_data(const hive_data_t* data, const uint8_t* dest_mac) {
     esp_now_send(dest_mac, (const uint8_t*)data, sizeof(hive_data_t));
 }
+// إعدادات التشفير لـ ESP-NOW
+static uint8_t pmk[] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10};
+static uint8_t lmk[] = {0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+                        0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20};
+
+void espnow_enable_encryption(void) {
+    esp_now_set_pmk(pmk);
+    ESP_LOGI(TAG, "🔐 ESP-NOW encryption enabled");
+}

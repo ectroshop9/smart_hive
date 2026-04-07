@@ -12,7 +12,7 @@ idf_component_register(
         system
         web_server
         setup_wizard
-        ota_update
+        nvs_logger
         lvgl
     PRIV_REQUIRES 
         nvs_flash
@@ -24,7 +24,7 @@ idf_component_register(
         esp_event
         esp_netif
         esp_system
-        app_update
+        esp_psram
 )
 
 target_compile_options(${COMPONENT_TARGET} PRIVATE -std=c++17 -Wno-missing-field-initializers)

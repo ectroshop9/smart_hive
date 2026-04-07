@@ -14,7 +14,7 @@ static bool s_motion_entrance = false, s_motion_inside = false;
 static int s_colony = 0, s_health = 0;
 static float s_top = 0, s_mid = 0, s_bottom = 0;
 
-// صفحة HTML مضمنة بسيطة
+// صفحة HTML مضمنة بسيطة (مع AJAX Polling بدلاً من WebSocket)
 static const char* HTML_PAGE = 
 "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'>"
 "<title>Smart Hive</title><style>"
@@ -36,6 +36,8 @@ static const char* HTML_PAGE =
 "document.getElementById('gas').innerHTML=d.gas;"
 "document.getElementById('uv').innerHTML=d.uv;"
 "document.getElementById('vib').innerHTML=d.vibration;"
+"if(d.temp>40)document.getElementById('temp').style.color='#ff3e3e';"
+"else document.getElementById('temp').style.color='#ffc107';"
 "}catch(e){}}"
 "setInterval(fetchData,2000);fetchData();"
 "</script>"
@@ -52,7 +54,7 @@ static const char* HTML_PAGE =
 "<div class='card'><div>⬆️ حرارة عليا</div><div class='value' id='top'>--</div><div>°C</div></div>"
 "<div class='card'><div>👑 حرارة وسطى</div><div class='value' id='mid'>--</div><div>°C</div></div>"
 "<div class='card'><div>⬇️ حرارة سفلى</div><div class='value' id='bottom'>--</div><div>°C</div></div>"
-"<div style='margin-top:20px;color:#888;'>SMART HIVE | الجزائر</div>"
+"<div style='margin-top:20px;color:#888;'>SMART HIVE | تحديث تلقائي</div>"
 "</body></html>";
 
 static esp_err_t root_handler(httpd_req_t *req) {

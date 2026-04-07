@@ -1,3 +1,5 @@
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "hive_manager.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -190,3 +192,29 @@ int getSelected(void) {
 }
 
 } // namespace HiveManager
+// ==================== Mutex لحماية البيانات ====================
+static SemaphoreHandle_t hive_mutex = NULL;
+
+static void hive_mutex_init(void) {
+    if (hive_mutex == NULL) {
+        hive_mutex = xSemaphoreCreateMutex();
+    }
+}
+
+void hive_manager_lock_read(void) {
+    hive_mutex_init();
+    xSemaphoreTake(hive_mutex, portMAX_DELAY);
+}
+
+void hive_manager_unlock_read(void) {
+    if (hive_mutex) xSemaphoreGive(hive_mutex);
+}
+
+void hive_manager_lock_write(void) {
+    hive_mutex_init();
+    xSemaphoreTake(hive_mutex, portMAX_DELAY);
+}
+
+void hive_manager_unlock_write(void) {
+    if (hive_mutex) xSemaphoreGive(hive_mutex);
+}
