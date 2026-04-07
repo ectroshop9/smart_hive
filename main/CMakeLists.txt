@@ -25,6 +25,7 @@ idf_component_register(
         esp_netif
         esp_system
         esp_psram
+        esp_pm
 )
 
 target_compile_options(${COMPONENT_TARGET} PRIVATE -std=c++17 -Wno-missing-field-initializers)
