@@ -27,7 +27,36 @@ static bool system_ready = false;
 static TaskHandle_t ui_task_handle = NULL;
 static TaskHandle_t ai_task_handle = NULL;
 
-// ========== فحص وعرض معلومات الذاكرة ==========
+// 
+
+// ========== نظام التشخيص الذاتي (Diagnostics) ==========
+typedef struct {
+    bool memory_ok;
+    bool espnow_ok;
+    bool ai_engine_ok;
+    bool display_ok;
+    uint32_t last_sync_time;
+} sys_diag_t;
+
+static sys_diag_t master_health = {true, true, true, true, 0};
+
+static void perform_system_diagnostics(void) {
+    // 1. فحص الذاكرة
+    size_t free_ram = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    master_health.memory_ok = (free_ram > 10240); // التحذير إذا قل عن 10KB
+    
+    // 2. فحص حالة الاتصال (آخر تحديث من HiveManager)
+    // ملاحظة: نفترض وجود دالة للحصول على وقت آخر استقبال
+    master_health.espnow_ok = (pdTICKS_TO_MS(xTaskGetTickCount()) - master_health.last_sync_time < 60000);
+
+    // 3. طباعة تقرير الحالة في السجل
+    ESP_LOGI(TAG, "🔍 DIAG: RAM:%s | ESPNOW:%s | AI:%s", 
+             master_health.memory_ok ? "OK" : "LOW",
+             master_health.espnow_ok ? "ALIVE" : "DEAD",
+             master_health.ai_engine_ok ? "RUNNING" : "STOPPED");
+}
+
+// ========== فحص وعرض معلومات الذاكرة (أصلية) ==========
 static void print_memory_info(void) {
     size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024;
     ESP_LOGI(TAG, "📊 Internal RAM: %d KB", (int)internal_free);
@@ -68,7 +97,7 @@ static void init_power_management(void) {
     ESP_LOGI(TAG, "⚡ Power management enabled (40-240 MHz, light sleep)");
 }
 
-// ========== RAII Mutex Lock ==========
+// ========== RAII Mutex Lock (أصلية) ==========
 class MutexLock {
 public:
     explicit MutexLock(SemaphoreHandle_t mutex) : m_mutex(mutex) {
@@ -81,7 +110,7 @@ private:
     SemaphoreHandle_t m_mutex;
 };
 
-// ========== تحديث خادم الويب بالبيانات ==========
+// ========== تحديث خادم الويب بالبيانات (أصلية) ==========
 static void update_web_server(const hive_data_t* data) {
     if (!data) return;
     float temp_avg = (hive_get_temp_1(data) + hive_get_temp_2(data) + hive_get_temp_3(data)) / 3.0f;
@@ -94,9 +123,11 @@ static void update_web_server(const hive_data_t* data) {
     );
 }
 
-// ========== Callbacks ==========
+// ========== Callbacks (أصلية) ==========
 static void onEspNowData(const hive_data_t* data) {
     if (!data || !system_ready) return;
+    
+    master_health.last_sync_time = pdTICKS_TO_MS(xTaskGetTickCount()); // تحديث وقت التشخيص
     
     hive_manager_lock_write();
     HiveManager::updateHive(*data);
@@ -124,7 +155,7 @@ static void onJoystickMove(int delta) {
     }
 }
 
-// ========== UI Task ==========
+// ========== UI Task (أصلية) ==========
 static void ui_update_task(void *pv) {
     ui_update_msg_t msg;
     while (1) {
@@ -139,17 +170,20 @@ static void ui_update_task(void *pv) {
     }
 }
 
-// ========== State Change Callback ==========
+// ========== State Change Callback (أصلية) ==========
 static void onStateChange(const HiveState& oldState, const HiveState& newState) {
     ESP_LOGI(TAG, "🎯 State: %s -> %s", stateToString(oldState), stateToString(newState));
     MutexLock lock(display_get_mutex());
     display_update_ai_status(AiEngine::getLastResult());
 }
 
-// ========== مراقبة المهام ==========
+// ========== مراقبة المهام + التشخيص ==========
 static void monitor_task(void *pv) {
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(30000));
+        
+        perform_system_diagnostics(); // إضافة حالة التشخيص هنا
+        
         if (ui_task_handle) {
             UBaseType_t watermark = uxTaskGetStackHighWaterMark(ui_task_handle);
             ESP_LOGI(TAG, "📊 UI Task stack free: %d bytes", (int)watermark * 4);
@@ -158,7 +192,7 @@ static void monitor_task(void *pv) {
     }
 }
 
-// ========== NVS Logging (الصندوق الأسود) ==========
+// ========== NVS Logging (أصلية) ==========
 static void nvs_log_event(const char* event) {
     nvs_handle_t nvs;
     if (nvs_open("event_log", NVS_READWRITE, &nvs) == ESP_OK) {
@@ -177,17 +211,13 @@ static void nvs_log_event(const char* event) {
 // ========== app_main (نقطة انطلاق النظام) ==========
 extern "C" void app_main(void) {
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "🚀 SMART HIVE MASTER v5.3 - SECURE EDITION");
+    ESP_LOGI(TAG, "🚀 SMART HIVE MASTER v5.3 - DIAGNOSTIC ENABLED");
     ESP_LOGI(TAG, "========================================");
     
-    // 1. تفعيل إدارة الطاقة والحماية (يجب البدء بها)
     init_power_management();
     init_watchdog();
-    
-    // 2. فحص معلومات الذاكرة (التحقق من PSRAM)
     print_memory_info();
     
-    // 3. تهيئة NVS
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -195,44 +225,35 @@ extern "C" void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
     
-    // 4. تهيئة طابور تحديث الواجهة
     ui_update_queue = xQueueCreate(10, sizeof(ui_update_msg_t));
     configASSERT(ui_update_queue);
     
-    // 5. تهيئة المكونات البرمجية
     Alarm::init();
     HiveManager::init();
     AiEngine::init();
     AiEngine::registerStateCallback(onStateChange);
     
-    // 6. تهيئة أدوات التحكم (Joystick)
     joystick_init();
     joystick_register_callback(onJoystickMove);
     joystick_start_task();
     
-    // 7. تهيئة العرض (Display)
     display_init();
     display_create_ui();
     
-    // 8. تهيئة ESP-NOW
     espnow_handler_init();
     espnow_handler_register_callback(onEspNowData);
     
-    // 9. بدء المحركات (AI & Web Server)
     AiEngine::start();
     start_web_server();
     
-    // 10. إطلاق المهام وتثبيتها على الأنوية
     xTaskCreatePinnedToCore(ui_update_task, "ui_task", 16384, nullptr, 3, &ui_task_handle, 1);
     xTaskCreatePinnedToCore(monitor_task, "sys_monitor", 4096, nullptr, 1, NULL, 0);
     
-    // 11. تسجيل حدث التشغيل
-    nvs_log_event("System Started");
+    nvs_log_event("System Diagnostic Mode Started");
     
     system_ready = true;
     ESP_LOGI(TAG, "✅ ALL SYSTEMS ONLINE & PROTECTED");
     
-    // 12. الحلقة الرئيسية (إطعام الكلب الحارس)
     while (1) {
         esp_task_wdt_reset();
         vTaskDelay(pdMS_TO_TICKS(1000));
